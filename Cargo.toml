@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.96"
+bevy_color = { version = "0.15.4", default-features = false }
+bytemuck = "1.21.0"
+egui = { version = "0.31.0", default-features = false }
+egui-wgpu = { version = "0.31.0", default-features = false }
+glam = { version = "0.30.0", features = ["scalar-math", "bytemuck"] }
+image = { version = "0.25.5", default-features = false }
+rusty_spine = "0.8.0"
+
+[dev-dependencies]
+eframe = { version = "0.31.0", default-features = false, features = ["wgpu", "x11"] }
