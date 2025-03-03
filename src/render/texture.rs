@@ -49,7 +49,8 @@ impl Texture {
         let mut pixels = pixels.into_vec();
 
         // TODO(Unavailable): Rewrite with `epaint`.
-        if premultiplied_alpha {
+        // FIXME(Unavailable): This is only needed if the fragment shader format is Srgb
+        if false {
             for i in 0..(pixels.len() / 4) {
                 let srgba = Srgba::rgba_u8(
                     pixels[i * 4],
@@ -91,7 +92,7 @@ impl Texture {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8UnormSrgb,
+                format: TextureFormat::Rgba8Unorm,
                 usage: TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },

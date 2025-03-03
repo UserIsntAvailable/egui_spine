@@ -14,4 +14,4 @@ image = { version = "0.25.5", default-features = false }
 rusty_spine = "0.8.0"
 
 [dev-dependencies]
-eframe = { version = "0.31.0", default-features = false, features = ["wgpu", "x11"] }
+eframe = { version = "0.31.0", default-features = false, features = ["wgpu", "x11", "wayland"] }

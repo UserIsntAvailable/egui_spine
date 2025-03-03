@@ -150,6 +150,7 @@ unsafe impl Send for Meshes {}
 unsafe impl Sync for Meshes {}
 
 /// Configuration options on how the spine animation would look.
+// FIXME(Unavailable): Constructor
 #[derive(Clone, Debug)]
 pub struct Scene {
     pos: Vec2,
@@ -193,6 +194,7 @@ impl Default for Scene {
 #[derive(Clone, Debug)]
 pub enum Animation {
     Index(usize),
+    // TODO(Unavailable): Cow<'static, str>
     Name(String),
 }
 

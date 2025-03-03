@@ -200,8 +200,10 @@ impl CallbackTrait for WgpuSpineCallback {
             }
 
             let indices_len = mesh.indices.len();
+            // NOTE: We don't need to do this with `vertices`, because `size_of::<Vertex>`
+            // is divisible by `COPY_BUFFER_ALIGNMENT`.
             let padded_indices_len = if indices_len % COPY_BUFFER_ALIGNMENT as usize != 0 {
-                indices_len + 2
+                indices_len + 1
             } else {
                 indices_len
             };
