@@ -1,15 +1,15 @@
 use egui::{Response, Ui, Widget};
 use glam::{Mat4, Vec2, vec3};
-use render::wgpu::WgpuSpineCallback;
+use renderer::RendererCallback;
 use rusty_spine::{
     AnimationStateData, Atlas, Physics, SkeletonBinary, SkeletonData, SkeletonJson, SpineError,
     controller::{SkeletonCombinedRenderable, SkeletonController, SkeletonControllerSettings},
-    draw::{ColorSpace::SRGB, CullDirection::CounterClockwise},
+    draw::{ColorSpace, CullDirection},
 };
 use std::{path::Path, sync::Arc};
 
-mod render;
-pub use render::wgpu::{WgpuContexOptions, init_wgpu_spine_context};
+mod renderer;
+pub use renderer::wgpu::{WgpuContexOptions, init_wgpu_spine_context};
 
 #[derive(Debug)]
 pub struct Spine {
@@ -35,8 +35,8 @@ impl Spine {
         let animation_state = Arc::new(AnimationStateData::new(skel.clone()));
         let controller = SkeletonController::new(skel.clone(), animation_state);
         let settings = SkeletonControllerSettings {
-            color_space: SRGB,
-            cull_direction: CounterClockwise,
+            color_space: ColorSpace::SRGB,
+            cull_direction: CullDirection::CounterClockwise,
             premultiplied_alpha,
         };
         let mut controller = controller.with_settings(settings);
@@ -82,12 +82,6 @@ impl Spine {
     }
 }
 
-impl Spine {
-    fn meshes(&mut self) -> Meshes {
-        Meshes(self.controller.combined_renderables())
-    }
-}
-
 impl Widget for &mut Spine {
     fn ui(self, ui: &mut Ui) -> Response {
         ui.ctx().request_repaint();
@@ -95,8 +89,8 @@ impl Widget for &mut Spine {
         let dt = ui.input(|i| i.stable_dt).max(0.001);
         self.controller.update(dt, Physics::Update);
 
-        let meshes = self.meshes();
-        let pma = self.controller.settings.premultiplied_alpha;
+        let meshes = Meshes(self.controller.combined_renderables());
+        let premultiplied_alpha = self.controller.settings.premultiplied_alpha;
         let rect = ui.available_rect_before_wrap();
 
         let scene_view = self.scene.create_scene_view(rect.size());
@@ -104,10 +98,10 @@ impl Widget for &mut Spine {
 
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
-            WgpuSpineCallback {
+            RendererCallback {
                 meshes,
-                pma,
                 scene_view,
+                premultiplied_alpha,
             },
         ));
 
@@ -146,11 +140,36 @@ where
 
 struct Meshes(Vec<SkeletonCombinedRenderable>);
 
+impl std::ops::Deref for Meshes {
+    type Target = [SkeletonCombinedRenderable];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 unsafe impl Send for Meshes {}
 unsafe impl Sync for Meshes {}
 
 /// Configuration options on how the spine animation would look.
 // FIXME(Unavailable): Constructor
+// TODO(Unavailable): This struct should be split into (SpineOptions):
+//
+// scene: Scene {
+//   pos: Vec2,
+//   angle: f32,
+//   scale: f32,
+//   flipped: Flipped,
+// },
+//
+// animation: Animation {
+//   id: AnimationId,
+//   loop: bool,
+//   cull_mode: Option<Face>,
+//   skin: Option<Skin>,
+// }
+//
+// event_cb: Box<dyn Fn()>
 #[derive(Clone, Debug)]
 pub struct Scene {
     pos: Vec2,
@@ -191,6 +210,7 @@ impl Default for Scene {
     }
 }
 
+// TODO(Unavailable): Rename to `AnimationId`
 #[derive(Clone, Debug)]
 pub enum Animation {
     Index(usize),

@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     };
 
     eframe::run_native(
-        "My egui App",
+        "Spine egui",
         native_options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

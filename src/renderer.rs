@@ -1,9 +1,15 @@
+use crate::Meshes;
 use bytemuck::{Pod, Zeroable};
-use glam::{Vec2, Vec4};
+use glam::{Mat4, Vec2, Vec4};
 use rusty_spine::BlendMode;
 
-mod texture;
 pub mod wgpu;
+
+pub struct RendererCallback {
+    pub meshes: Meshes,
+    pub scene_view: Mat4,
+    pub premultiplied_alpha: bool,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]

@@ -1,14 +1,18 @@
-use anyhow::*;
 use bevy_color::{LinearRgba, Srgba};
 use egui_wgpu::wgpu::Texture as WgpuTexture;
 use egui_wgpu::wgpu::util::{DeviceExt as _, TextureDataOrder};
 use egui_wgpu::wgpu::*;
+use image::ImageResult;
 use std::path::Path;
 
-#[derive(Clone)]
 pub struct Texture {
     pub texture: WgpuTexture,
     pub bind_group: BindGroup,
+}
+
+pub struct ColorProfile {
+    pub surface_format: TextureFormat,
+    pub premultiplied_alpha: bool,
 }
 
 impl Texture {
@@ -16,10 +20,10 @@ impl Texture {
         device: &Device,
         queue: &Queue,
         path: P,
-        premultiplied_alpha: bool,
+        color_profile: ColorProfile,
         sampler_desc: &SamplerDescriptor<'static>,
         bind_group_layout: &BindGroupLayout,
-    ) -> Result<Self>
+    ) -> ImageResult<Self>
     where
         P: AsRef<Path>,
     {
@@ -27,7 +31,7 @@ impl Texture {
             device,
             queue,
             path.as_ref(),
-            premultiplied_alpha,
+            color_profile,
             sampler_desc,
             bind_group_layout,
         )
@@ -37,10 +41,10 @@ impl Texture {
         device: &Device,
         queue: &Queue,
         path: &Path,
-        premultiplied_alpha: bool,
+        color_profile: ColorProfile,
         sampler_desc: &SamplerDescriptor<'static>,
         bind_group_layout: &BindGroupLayout,
-    ) -> Result<Self> {
+    ) -> ImageResult<Self> {
         let bytes = std::fs::read(&path)?;
         let image = image::load_from_memory(&bytes)?;
 
@@ -49,8 +53,7 @@ impl Texture {
         let mut pixels = pixels.into_vec();
 
         // TODO(Unavailable): Rewrite with `epaint`.
-        // FIXME(Unavailable): This is only needed if the fragment shader format is Srgb
-        if false {
+        if color_profile.surface_format.is_srgb() && color_profile.premultiplied_alpha {
             for i in 0..(pixels.len() / 4) {
                 let srgba = Srgba::rgba_u8(
                     pixels[i * 4],
@@ -80,6 +83,11 @@ impl Texture {
             }
         }
 
+        let format = if color_profile.surface_format.is_srgb() {
+            TextureFormat::Rgba8UnormSrgb
+        } else {
+            TextureFormat::Rgba8Unorm
+        };
         let texture = device.create_texture_with_data(
             queue,
             &TextureDescriptor {
@@ -92,7 +100,7 @@ impl Texture {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8Unorm,
+                format,
                 usage: TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },
@@ -104,9 +112,7 @@ impl Texture {
             label: Some("Texture View"),
             ..Default::default()
         });
-
         let sampler = device.create_sampler(sampler_desc);
-
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Spine Texture Bind Group"),
             layout: bind_group_layout,

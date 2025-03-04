@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.96"
 bevy_color = { version = "0.15.4", default-features = false }
 bytemuck = "1.21.0"
 egui = { version = "0.31.0", default-features = false }

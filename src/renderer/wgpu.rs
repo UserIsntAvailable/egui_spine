@@ -1,19 +1,23 @@
-use super::{SpineBlendMode, Vertex, texture::Texture};
-use crate::{Meshes, Scene};
+use super::{RendererCallback, SpineBlendMode, Vertex};
+use crate::Scene;
 use egui::{PaintCallbackInfo, Vec2};
 use egui_wgpu::wgpu::util::*;
 use egui_wgpu::*;
 use glam::{Mat4, Vec4};
 use rusty_spine::atlas::{AtlasFilter, AtlasWrap};
-use std::num::NonZero;
+use std::{num::NonZero, ops::Deref};
+use texture::{ColorProfile, Texture};
 
 pub(super) use egui_wgpu::wgpu::*;
+
+mod texture;
 
 pub struct WgpuContexOptions {}
 
 struct WgpuResources {
     device: Device,
     queue: Queue,
+    surface_format: TextureFormat,
     shader: ShaderModule,
     scene_buffer: Buffer,
     vertex_buffer: Buffer,
@@ -26,9 +30,14 @@ struct WgpuResources {
 pub fn init_wgpu_spine_context(render_state: &RenderState, _options: WgpuContexOptions) {
     set_spine_callbacks();
 
-    let RenderState { device, queue, .. } = render_state;
+    let RenderState {
+        device,
+        queue,
+        target_format,
+        ..
+    } = render_state;
 
-    let shader = device.create_shader_module(include_wgsl!("../spine.wgsl"));
+    let shader = device.create_shader_module(include_wgsl!("spine.wgsl"));
 
     let scene_view = Scene::default().create_scene_view(Vec2::ZERO);
     let scene_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -108,6 +117,7 @@ pub fn init_wgpu_spine_context(render_state: &RenderState, _options: WgpuContexO
     let resources = WgpuResources {
         device: device.clone(),
         queue: queue.clone(),
+        surface_format: *target_format,
         shader,
         scene_buffer,
         vertex_buffer,
@@ -123,13 +133,7 @@ pub fn init_wgpu_spine_context(render_state: &RenderState, _options: WgpuContexO
         .insert(resources);
 }
 
-pub struct WgpuSpineCallback {
-    pub meshes: Meshes,
-    pub pma: bool,
-    pub scene_view: Mat4,
-}
-
-impl CallbackTrait for WgpuSpineCallback {
+impl CallbackTrait for RendererCallback {
     fn prepare(
         &self,
         _: &Device,
@@ -158,6 +162,7 @@ impl CallbackTrait for WgpuSpineCallback {
         let WgpuResources {
             device,
             queue,
+            surface_format,
             vertex_buffer,
             index_buffer,
             texture_bind_group_layout,
@@ -166,9 +171,9 @@ impl CallbackTrait for WgpuSpineCallback {
         } = &resources;
 
         render_pass.set_bind_group(0, scene_bind_group, &[]);
-        for mesh in &self.meshes.0 {
+        for mesh in self.meshes.deref() {
             let blend_mode = SpineBlendMode(mesh.blend_mode);
-            let blend_state = blend_mode.into_blend_state(self.pma);
+            let blend_state = blend_mode.into_blend_state(self.premultiplied_alpha);
             render_pass.set_pipeline(&resources.create_render_pipeline(blend_state));
 
             let mut vertices = vec![];
@@ -222,15 +227,21 @@ impl CallbackTrait for WgpuSpineCallback {
             let spine_texture = unsafe { &mut *(spine_texture as *mut SpineTexture) };
 
             if let SpineTexture::Loading { path, sampler_desc } = spine_texture {
+                let color_profile = ColorProfile {
+                    surface_format: *surface_format,
+                    premultiplied_alpha: self.premultiplied_alpha,
+                };
                 *spine_texture = SpineTexture::Loaded(
                     Texture::from_path(
                         device,
                         queue,
                         &**path,
-                        self.pma,
+                        color_profile,
                         sampler_desc,
                         texture_bind_group_layout,
                     )
+                    // FIXME(Unavailable): Any error here should be ignored and logged to the
+                    // user.
                     .unwrap(),
                 )
             };
@@ -262,8 +273,7 @@ impl WgpuResources {
                     module: &self.shader,
                     entry_point: None,
                     targets: &[Some(ColorTargetState {
-                        // FIXME(Unavailable): Pass down from `WgpuSpineCallback`.
-                        format: TextureFormat::Bgra8Unorm,
+                        format: self.surface_format,
                         blend: Some(blend_state),
                         write_mask: ColorWrites::ALL,
                     })],
