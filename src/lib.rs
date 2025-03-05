@@ -1,9 +1,9 @@
 use egui::{Response, Ui, Widget};
 use glam::{Mat4, Vec2, vec3};
-use renderer::RendererCallback;
+use renderer::{Meshes, RendererCallback};
 use rusty_spine::{
     AnimationStateData, Atlas, Physics, SkeletonBinary, SkeletonData, SkeletonJson, SpineError,
-    controller::{SkeletonCombinedRenderable, SkeletonController, SkeletonControllerSettings},
+    controller::{SkeletonController, SkeletonControllerSettings},
     draw::{ColorSpace, CullDirection},
 };
 use std::{path::Path, sync::Arc};
@@ -72,6 +72,8 @@ impl Spine {
         &self.scene
     }
 
+    // TODO(Unavailable): Iterator that returns all the available animations.
+
     // TODO(Unavailable): Individual `set_scene_*` methods.
 
     // NOTE: We can't just give a `&mut Scene` to the user, since we need to
@@ -83,6 +85,8 @@ impl Spine {
 }
 
 impl Widget for &mut Spine {
+    // FIXME(Unavailable): I need to find a way to prevent people for calling
+    // `ui.add(&mut spine)` twice in a single render pass.
     fn ui(self, ui: &mut Ui) -> Response {
         ui.ctx().request_repaint();
 
@@ -138,19 +142,6 @@ where
     }
 }
 
-struct Meshes(Vec<SkeletonCombinedRenderable>);
-
-impl std::ops::Deref for Meshes {
-    type Target = [SkeletonCombinedRenderable];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-unsafe impl Send for Meshes {}
-unsafe impl Sync for Meshes {}
-
 /// Configuration options on how the spine animation would look.
 // FIXME(Unavailable): Constructor
 // TODO(Unavailable): This struct should be split into (SpineOptions):
@@ -164,6 +155,7 @@ unsafe impl Sync for Meshes {}
 //
 // animation: Animation {
 //   id: AnimationId,
+//   playback_speed: f32,
 //   loop: bool,
 //   cull_mode: Option<Face>,
 //   skin: Option<Skin>,

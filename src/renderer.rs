@@ -1,7 +1,6 @@
-use crate::Meshes;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec4};
-use rusty_spine::BlendMode;
+use rusty_spine::{BlendMode, controller::SkeletonCombinedRenderable};
 
 pub mod wgpu;
 
@@ -10,6 +9,12 @@ pub struct RendererCallback {
     pub scene_view: Mat4,
     pub premultiplied_alpha: bool,
 }
+
+pub struct Meshes(pub Vec<SkeletonCombinedRenderable>);
+
+// FIXME(Unavailable): Why this is safe again?
+unsafe impl Send for Meshes {}
+unsafe impl Sync for Meshes {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]

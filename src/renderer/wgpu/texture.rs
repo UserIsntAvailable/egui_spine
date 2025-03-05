@@ -91,7 +91,7 @@ impl Texture {
         let texture = device.create_texture_with_data(
             queue,
             &TextureDescriptor {
-                label: Some("Texture"),
+                label: Some("Spine Texture"),
                 size: Extent3d {
                     width,
                     height,
@@ -109,7 +109,7 @@ impl Texture {
         );
 
         let view = texture.create_view(&TextureViewDescriptor {
-            label: Some("Texture View"),
+            label: Some("Spine Texture View"),
             ..Default::default()
         });
         let sampler = device.create_sampler(sampler_desc);
