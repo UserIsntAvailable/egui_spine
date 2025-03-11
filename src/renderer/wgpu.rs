@@ -1,7 +1,6 @@
-use super::{RendererCallback, SpineBlendMode, Vertex};
+use super::{RendererCallback, Vertex};
 use egui_wgpu::wgpu::util::{BufferInitDescriptor, DeviceExt};
-use egui_wgpu::{CallbackResources, CallbackTrait, RenderState, ScreenDescriptor};
-use glam::{Vec2, Vec4};
+use egui_wgpu::{CallbackResources, CallbackTrait, RenderState};
 use rusty_spine::atlas::{AtlasFilter, AtlasWrap};
 use texture::{ColorProfile, Texture};
 
@@ -93,17 +92,6 @@ struct WgpuResources {
 }
 
 impl CallbackTrait for RendererCallback {
-    fn prepare(
-        &self,
-        _: &Device,
-        _: &Queue,
-        _: &ScreenDescriptor,
-        _: &mut CommandEncoder,
-        _: &mut CallbackResources,
-    ) -> Vec<CommandBuffer> {
-        vec![]
-    }
-
     fn paint(
         &self,
         _: egui::PaintCallbackInfo,
@@ -137,34 +125,17 @@ impl CallbackTrait for RendererCallback {
         });
         render_pass.set_bind_group(0, &scene_bind_group, &[]);
 
-        for mesh in &self.meshes.0 {
-            let blend_mode = SpineBlendMode(mesh.blend_mode);
-            let blend_state = blend_mode.into_blend_state(self.premultiplied_alpha);
+        for mesh in self.meshes.iter() {
+            let blend_state = mesh.blend_mode.into_blend_state(mesh.premultiplied_alpha);
             render_pass.set_pipeline(&resources.create_render_pipeline(blend_state));
 
-            let mut vertices = vec![];
-            for vertex_index in 0..mesh.vertices.len() {
-                vertices.push(Vertex {
-                    position: Vec2 {
-                        x: mesh.vertices[vertex_index][0],
-                        y: mesh.vertices[vertex_index][1],
-                    },
-                    uv: Vec2 {
-                        x: mesh.uvs[vertex_index][0],
-                        y: mesh.uvs[vertex_index][1],
-                    },
-                    color: Vec4::from_array(mesh.colors[vertex_index]),
-                    dark_color: Vec4::from_array(mesh.dark_colors[vertex_index]),
-                });
-            }
-
-            if vertices.is_empty() {
+            if mesh.vertices.is_empty() {
                 continue;
             }
 
             let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
                 label: Some("Spine Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
+                contents: bytemuck::cast_slice(&mesh.vertices),
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             });
 
@@ -174,17 +145,19 @@ impl CallbackTrait for RendererCallback {
                 usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
             });
 
-            let Some(spine_texture) = mesh.attachment_renderer_object else {
+            // SAFETY: `WgpuTexture` is the registered type in
+            // `set_create_texture_cb`.
+            let spine_texture = unsafe { mesh.renderer_object::<WgpuTexture>() };
+            let Some(spine_texture) = spine_texture else {
                 continue;
             };
-            let spine_texture = unsafe { &mut *(spine_texture as *mut SpineTexture) };
 
-            if let SpineTexture::Loading { path, sampler_desc } = spine_texture {
+            if let WgpuTexture::Loading { path, sampler_desc } = spine_texture {
                 let color_profile = ColorProfile {
                     surface_format: *surface_format,
-                    premultiplied_alpha: self.premultiplied_alpha,
+                    premultiplied_alpha: mesh.premultiplied_alpha,
                 };
-                *spine_texture = SpineTexture::Loaded(
+                *spine_texture = WgpuTexture::Loaded(
                     Texture::from_path(
                         device,
                         queue,
@@ -199,7 +172,7 @@ impl CallbackTrait for RendererCallback {
                 )
             };
 
-            let SpineTexture::Loaded(texture) = &spine_texture else {
+            let WgpuTexture::Loaded(texture) = &spine_texture else {
                 unreachable!()
             };
             render_pass.set_bind_group(1, &texture.bind_group, &[]);
@@ -248,7 +221,7 @@ impl WgpuResources {
 }
 
 // Texture
-enum SpineTexture {
+enum WgpuTexture {
     Loading {
         path: Box<str>,
         sampler_desc: SamplerDescriptor<'static>,
@@ -276,7 +249,7 @@ fn set_spine_callbacks() {
                 _wrap => AddressMode::ClampToEdge,
             }
         }
-        page.renderer_object().set(SpineTexture::Loading {
+        page.renderer_object().set(WgpuTexture::Loading {
             path: path.to_owned().into_boxed_str(),
             sampler_desc: SamplerDescriptor {
                 label: Some("Spine Texture Sampler Descriptor"),
@@ -289,7 +262,8 @@ fn set_spine_callbacks() {
         });
     });
 
-    rusty_spine::extension::set_dispose_texture_cb(|page| unsafe {
-        page.renderer_object().dispose::<SpineTexture>()
-    });
+    rusty_spine::extension::set_dispose_texture_cb(|page|
+        // SAFETY: `SpineTexture` is a rust type that only contains values
+        // allocated with the rust allocator.
+        unsafe { page.renderer_object().dispose::<WgpuTexture>() });
 }

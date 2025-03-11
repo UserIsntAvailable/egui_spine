@@ -9,12 +9,13 @@ use rusty_spine::{
 use std::{path::Path, sync::Arc};
 
 mod renderer;
+
 pub use renderer::wgpu::{WgpuContexOptions, init_wgpu_spine_context};
 
 #[derive(Debug)]
 pub struct Spine {
     scene: Scene,
-    controller: SkeletonController,
+    controller: Arc<SkeletonController>,
 }
 
 impl Spine {
@@ -63,7 +64,10 @@ impl Spine {
 
         // TODO(Unvailable): `Skin` handling
 
-        Ok(Self { scene, controller })
+        Ok(Self {
+            scene,
+            controller: Arc::new(controller),
+        })
     }
 }
 
@@ -85,28 +89,27 @@ impl Spine {
 }
 
 impl Widget for &mut Spine {
-    // FIXME(Unavailable): I need to find a way to prevent people for calling
-    // `ui.add(&mut spine)` twice in a single render pass.
     fn ui(self, ui: &mut Ui) -> Response {
         ui.ctx().request_repaint();
 
+        let Some(controller) = Arc::get_mut(&mut self.controller) else {
+            panic!("Tried to render the same Spine model multiple times in the same render pass");
+        };
+
         let dt = ui.input(|i| i.stable_dt).max(0.001);
-        self.controller.update(dt, Physics::Update);
+        controller.update(dt, Physics::Update);
 
-        let meshes = Meshes(self.controller.combined_renderables());
-        let premultiplied_alpha = self.controller.settings.premultiplied_alpha;
+        let renderables = controller.combined_renderables();
+        let controller = Arc::clone(&self.controller);
+        let meshes = Meshes::new(controller, renderables);
+
         let rect = ui.available_rect_before_wrap();
-
         let scene_view = self.scene.create_scene_view(rect.size());
         // TODO(Unavailable): Pass down a `Face`
 
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
-            RendererCallback {
-                meshes,
-                scene_view,
-                premultiplied_alpha,
-            },
+            RendererCallback { meshes, scene_view },
         ));
 
         ui.response()

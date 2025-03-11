@@ -38,6 +38,8 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default()
             .frame(Default::default())
-            .show(ctx, |ui| ui.add(&mut self.spine));
+            .show(ctx, |ui| {
+                let _ = ui.add(&mut self.spine);
+            });
     }
 }
