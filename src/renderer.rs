@@ -175,8 +175,8 @@ mod meshes {
             renderables: Vec<SkeletonCombinedRenderable>,
         ) -> Self {
             Self {
-                _controller: controller,
                 inner: renderables,
+                _controller: controller,
             }
         }
 
