@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bevy_color = { version = "0.15.4", default-features = false }
+bitflags = "2.9.0"
 bytemuck = "1.21.0"
 egui = { version = "0.31.0", default-features = false }
 egui-wgpu = { version = "0.31.0", default-features = false }

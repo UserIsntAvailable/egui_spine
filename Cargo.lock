@@ -602,6 +602,7 @@ name = "egui_spine"
 version = "0.1.0"
 dependencies = [
  "bevy_color",
+ "bitflags 2.9.0",
  "bytemuck",
  "eframe",
  "egui",

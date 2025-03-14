@@ -1,10 +1,11 @@
-use super::{RendererCallback, Vertex};
+use super::{Face, RendererCallback, Vertex};
 use bevy_color::{LinearRgba, Srgba};
 use egui_wgpu::wgpu::util::{BufferInitDescriptor, DeviceExt, TextureDataOrder};
 use egui_wgpu::{CallbackResources, CallbackTrait, RenderState};
 use rusty_spine::atlas::{AtlasFilter, AtlasWrap};
 use std::num::NonZero;
 
+pub(super) use egui_wgpu::wgpu::Face as WgpuFace;
 pub(super) use egui_wgpu::wgpu::*;
 
 type SamplerDesc = SamplerDescriptor<'static>;
@@ -128,6 +129,7 @@ impl CallbackTrait for RendererCallback {
             }
 
             let blend_state = mesh.blend_mode.into_blend_state(mesh.premultiplied_alpha);
+            let cull_mode = self.cull_mode.map(Face::into_wgpu_face);
 
             // SAFETY: `WgpuTexture` is the registered type in
             // `set_create_texture_cb`.
@@ -165,7 +167,7 @@ impl CallbackTrait for RendererCallback {
                     mapped_at_creation: false,
                 });
 
-                let pipeline = resources.create_render_pipeline(blend_state);
+                let pipeline = resources.create_render_pipeline(blend_state, cull_mode);
                 let texture_bind_group = resources
                     .create_texture_bind_group(path, mesh.premultiplied_alpha, sampler_desc)
                     // FIXME(Unavailable): Any error here should be ignored and
@@ -212,7 +214,11 @@ impl CallbackTrait for RendererCallback {
 }
 
 impl WgpuResources {
-    fn create_render_pipeline(&self, blend_state: BlendState) -> RenderPipeline {
+    fn create_render_pipeline(
+        &self,
+        blend_state: BlendState,
+        cull_mode: Option<WgpuFace>,
+    ) -> RenderPipeline {
         self.device
             .create_render_pipeline(&RenderPipelineDescriptor {
                 label: Some("Spine Render Pipeline"),
@@ -236,8 +242,7 @@ impl WgpuResources {
                 primitive: PrimitiveState {
                     topology: PrimitiveTopology::TriangleList,
                     front_face: FrontFace::Ccw,
-                    // FIXME(Unavailable): Pass down from `RendererCallback`.
-                    cull_mode: None,
+                    cull_mode,
                     ..Default::default()
                 },
                 multisample: MultisampleState::default(),

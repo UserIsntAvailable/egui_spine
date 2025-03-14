@@ -6,28 +6,37 @@ use rusty_spine::{
     controller::{SkeletonController, SkeletonControllerSettings},
     draw::{ColorSpace, CullDirection},
 };
-use std::{path::Path, sync::Arc};
+use std::{borrow::Cow, path::Path, sync::Arc};
 
 mod renderer;
 
+pub use renderer::Face;
 pub use renderer::wgpu::{WgpuContexOptions, init_wgpu_spine_context};
 
 #[derive(Debug)]
 pub struct Spine {
-    scene: Scene,
+    options: SpineOptions,
     controller: Arc<SkeletonController>,
 }
 
 impl Spine {
-    pub fn new<A, S>(atlas: A, skel: SkeletonKind<S>, scene: Scene) -> Result<Self, SpineError>
+    pub fn new<A, S>(
+        atlas: A,
+        skel: SkeletonKind<S>,
+        options: SpineOptions,
+    ) -> Result<Self, SpineError>
     where
         A: AsRef<Path>,
         S: AsRef<Path>,
     {
-        Self::__new(atlas.as_ref(), skel.as_ref(), scene)
+        Self::__new(atlas.as_ref(), skel.as_ref(), options)
     }
 
-    fn __new(atlas: &Path, skel: SkeletonKind<&Path>, scene: Scene) -> Result<Self, SpineError> {
+    fn __new(
+        atlas: &Path,
+        skel: SkeletonKind<&Path>,
+        options: SpineOptions,
+    ) -> Result<Self, SpineError> {
         let atlas = Arc::new(Atlas::new_from_file(atlas)?);
         let premultiplied_alpha = atlas.pages().any(|page| page.pma());
         let skel = Arc::new(skel.read(atlas)?);
@@ -47,17 +56,19 @@ impl Spine {
         // TODO(Unavailable): Configuration
         let should_loop = true;
         let animation_state = &mut controller.animation_state;
-        match &scene.animation {
-            Animation::Index(index) => match controller.skeleton.data().animations().nth(*index) {
-                Some(animation) => animation_state.set_animation(0, &animation, should_loop),
-                None => {
-                    return Err(SpineError::NotFound {
-                        what: "Animation".to_owned(),
-                        name: index.to_string(),
-                    });
+        match &options.animation.id {
+            AnimationId::Index(index) => {
+                match controller.skeleton.data().animations().nth(*index) {
+                    Some(animation) => animation_state.set_animation(0, &animation, should_loop),
+                    None => {
+                        return Err(SpineError::NotFound {
+                            what: "Animation".to_owned(),
+                            name: index.to_string(),
+                        });
+                    }
                 }
-            },
-            Animation::Name(name) => {
+            }
+            AnimationId::Name(name) => {
                 animation_state.set_animation_by_name(0, &name, should_loop)?
             }
         };
@@ -65,26 +76,23 @@ impl Spine {
         // TODO(Unvailable): `Skin` handling
 
         Ok(Self {
-            scene,
+            options,
             controller: Arc::new(controller),
         })
     }
 }
 
 impl Spine {
-    pub fn scene(&self) -> &Scene {
-        &self.scene
+    pub fn options(&self) -> &SpineOptions {
+        &self.options
     }
 
     // TODO(Unavailable): Iterator that returns all the available animations.
 
-    // TODO(Unavailable): Individual `set_scene_*` methods.
+    // TODO(Unavailable): Individual `set_animation_*` methods.
 
-    // NOTE: We can't just give a `&mut Scene` to the user, since we need to
-    // update the `controller` state depending on what the user changes in the
-    // scene.
-    pub fn update_scene(&mut self, _new_scene: Scene) {
-        todo!()
+    pub fn scene_mut(&mut self) -> &mut Scene {
+        &mut self.options.scene
     }
 }
 
@@ -104,12 +112,16 @@ impl Widget for &mut Spine {
         let meshes = Meshes::new(controller, renderables);
 
         let rect = ui.available_rect_before_wrap();
-        let scene_view = self.scene.create_scene_view(rect.size());
-        // TODO(Unavailable): Pass down a `Face`
+        let scene_view = self.options.scene.create_scene_view(rect.size());
+        let cull_mode = self.options.animation.cull_mode;
 
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
-            RendererCallback { meshes, scene_view },
+            RendererCallback {
+                meshes,
+                scene_view,
+                cull_mode,
+            },
         ));
 
         ui.response()
@@ -145,50 +157,41 @@ where
     }
 }
 
-/// Configuration options on how the spine animation would look.
-// FIXME(Unavailable): Constructor
-// TODO(Unavailable): This struct should be split into (SpineOptions):
-//
-// scene: Scene {
-//   pos: Vec2,
-//   angle: f32,
-//   scale: f32,
-//   flipped: Flipped,
-// },
-//
-// animation: Animation {
-//   id: AnimationId,
-//   playback_speed: f32,
-//   loop: bool,
-//   cull_mode: Option<Face>,
-//   skin: Option<Skin>,
-// }
-//
-// event_cb: Box<dyn Fn()>
+#[derive(Clone, Debug, Default)]
+pub struct SpineOptions {
+    pub scene: Scene,
+    pub animation: Animation,
+    // TODO(Unavailable): event_cb: Box<dyn Fn()>
+}
+
 #[derive(Clone, Debug)]
 pub struct Scene {
-    pos: Vec2,
-    angle: f32,
-    scale: f32,
-    animation: Animation,
-    // TODO(Unavailable): Horizontal and Vertical Flips
+    pub position: Vec2,
+    pub angle: f32,
+    pub scale: f32,
+    pub reflect: Reflect,
 }
 
 impl Scene {
-    pub fn create_scene_view(&self, size: egui::Vec2) -> Mat4 {
-        let pos = self.pos.extend(0.);
+    pub(crate) fn create_scene_view(&self, size: egui::Vec2) -> Mat4 {
+        let position = self.position.extend(0.);
         let scale = vec3(self.scale, self.scale, 1.);
 
-        let world = Mat4::from_translation(pos)
+        let world = Mat4::from_translation(position)
             * Mat4::from_rotation_z(self.angle)
             * Mat4::from_scale(scale);
 
-        #[rustfmt::skip]
-        let proj = Mat4::orthographic_rh(
-            size.x * -0.5, size.x * 0.5,
-            size.y * -0.5, size.y * 0.5,
-            0.           , 1.,
-        );
+        let (mut xl, mut xr) = (size.x * -0.5, size.x * 0.5);
+        let (mut yl, mut yr) = (size.y * -0.5, size.y * 0.5);
+
+        if self.reflect.contains(Reflect::XAxis) {
+            std::mem::swap(&mut yl, &mut yr);
+        }
+        if self.reflect.contains(Reflect::YAxis) {
+            std::mem::swap(&mut xl, &mut xr);
+        }
+
+        let proj = Mat4::orthographic_rh(xl, xr, yl, yr, 0., 1.);
 
         proj * world
     }
@@ -197,23 +200,52 @@ impl Scene {
 impl Default for Scene {
     fn default() -> Self {
         Self {
-            pos: Vec2::ZERO,
+            position: Vec2::ZERO,
             angle: 0.0,
             scale: 1.0,
-            animation: Default::default(),
+            reflect: Reflect::empty(),
         }
     }
 }
 
-// TODO(Unavailable): Rename to `AnimationId`
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug)]
+    pub struct Reflect: u8 {
+        const XAxis = 0b01;
+        const YAxis = 0b10;
+    }
+}
+
 #[derive(Clone, Debug)]
-pub enum Animation {
-    Index(usize),
-    // TODO(Unavailable): Cow<'static, str>
-    Name(String),
+pub struct Animation {
+    // TODO(Unavailable): Option<>, to allow not showing anything, until a
+    // user changes it.
+    pub id: AnimationId,
+    pub cull_mode: Option<Face>,
+    // TODO(Unavailable): Extra fields:
+    // ```
+    // playback_speed: f32,
+    // loop: bool,
+    // skin: Option<Skin>,
+    // ```
 }
 
 impl Default for Animation {
+    fn default() -> Self {
+        Self {
+            id: AnimationId::Index(0),
+            cull_mode: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AnimationId {
+    Index(usize),
+    Name(Cow<'static, str>),
+}
+
+impl Default for AnimationId {
     fn default() -> Self {
         Self::Index(0)
     }

@@ -7,6 +7,7 @@ pub mod wgpu;
 pub struct RendererCallback {
     pub meshes: Meshes,
     pub scene_view: Mat4,
+    pub cull_mode: Option<Face>,
 }
 
 #[repr(C)]
@@ -152,6 +153,24 @@ impl SpineBlendMode {
                     },
                 },
             },
+        }
+    }
+}
+
+/// Face of a vertex (cull mode)
+#[derive(Clone, Copy, Debug)]
+pub enum Face {
+    /// Front face
+    Front,
+    /// Back face
+    Back,
+}
+
+impl Face {
+    pub fn into_wgpu_face(self) -> wgpu::WgpuFace {
+        match self {
+            Face::Front => wgpu::WgpuFace::Front,
+            Face::Back => wgpu::WgpuFace::Back,
         }
     }
 }

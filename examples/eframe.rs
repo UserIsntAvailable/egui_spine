@@ -1,5 +1,9 @@
 use eframe::{NativeOptions, Result};
-use egui_spine::{SkeletonKind, Spine, WgpuContexOptions, init_wgpu_spine_context};
+use egui_spine::{
+    Animation, AnimationId, Scene, SkeletonKind, Spine, SpineOptions, WgpuContexOptions,
+    init_wgpu_spine_context,
+};
+use glam::vec2;
 
 fn main() -> Result<()> {
     let native_options = NativeOptions {
@@ -23,11 +27,21 @@ impl App {
         let render_state = cc.wgpu_render_state.as_ref().unwrap();
         init_wgpu_spine_context(render_state, WgpuContexOptions {});
 
+        let options = SpineOptions {
+            scene: Scene {
+                position: vec2(100., -360.),
+                scale: 0.70,
+                ..Default::default()
+            },
+            animation: Animation {
+                id: AnimationId::Index(2),
+            },
+        };
         Self {
             spine: Spine::new(
                 "assets/spineboy/export/spineboy.atlas",
                 SkeletonKind::Json("assets/spineboy/export/spineboy-ess.json"),
-                Default::default(),
+                options,
             )
             .unwrap(),
         }
