@@ -11,7 +11,9 @@ use std::{borrow::Cow, path::Path, sync::Arc};
 mod renderer;
 
 pub use renderer::Face;
-pub use renderer::wgpu::{WgpuContexOptions, init_wgpu_spine_context};
+pub use renderer::wgpu::{WgpuContextOptions, init_wgpu_spine_context};
+
+// TODO(Unavailable): Feature gate non strictly necessary dependencies.
 
 #[derive(Debug)]
 pub struct Spine {

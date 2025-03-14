@@ -1,7 +1,6 @@
 use eframe::{NativeOptions, Result};
 use egui_spine::{
-    Animation, AnimationId, Scene, SkeletonKind, Spine, SpineOptions, WgpuContexOptions,
-    init_wgpu_spine_context,
+    Animation, AnimationId, Scene, SkeletonKind, Spine, SpineOptions, init_wgpu_spine_context,
 };
 use glam::vec2;
 
@@ -25,7 +24,7 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let render_state = cc.wgpu_render_state.as_ref().unwrap();
-        init_wgpu_spine_context(render_state, WgpuContexOptions {});
+        init_wgpu_spine_context(render_state, Default::default());
 
         let options = SpineOptions {
             scene: Scene {
@@ -35,6 +34,7 @@ impl App {
             },
             animation: Animation {
                 id: AnimationId::Index(2),
+                ..Default::default()
             },
         };
         Self {

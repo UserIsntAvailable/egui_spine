@@ -609,6 +609,7 @@ dependencies = [
  "egui-wgpu",
  "glam 0.30.0",
  "image",
+ "log",
  "rusty_spine",
 ]
 

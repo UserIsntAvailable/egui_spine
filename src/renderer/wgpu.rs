@@ -10,9 +10,21 @@ pub(super) use egui_wgpu::wgpu::*;
 
 type SamplerDesc = SamplerDescriptor<'static>;
 
-pub struct WgpuContexOptions {}
+pub struct WgpuContextOptions {
+    pub on_texture_load_error: Option<Box<dyn Fn(image::ImageError) + Send + Sync + 'static>>,
+}
 
-pub fn init_wgpu_spine_context(render_state: &RenderState, _options: WgpuContexOptions) {
+impl Default for WgpuContextOptions {
+    fn default() -> Self {
+        Self {
+            on_texture_load_error: Some(Box::new(|error| {
+                log::error!("Error while loading texture: {error:?}");
+            })),
+        }
+    }
+}
+
+pub fn init_wgpu_spine_context(render_state: &RenderState, options: WgpuContextOptions) {
     set_spine_callbacks();
 
     let RenderState {
@@ -75,6 +87,7 @@ pub fn init_wgpu_spine_context(render_state: &RenderState, _options: WgpuContexO
         scene_bind_group_layout,
         texture_bind_group_layout,
         pipeline_layout,
+        context_options: options,
     };
     render_state
         .renderer
@@ -91,6 +104,7 @@ struct WgpuResources {
     scene_bind_group_layout: BindGroupLayout,
     texture_bind_group_layout: BindGroupLayout,
     pipeline_layout: PipelineLayout,
+    context_options: WgpuContextOptions,
 }
 
 impl CallbackTrait for RendererCallback {
@@ -105,6 +119,7 @@ impl CallbackTrait for RendererCallback {
             device,
             queue,
             scene_bind_group_layout,
+            context_options,
             ..
         } = &resources;
 
@@ -168,17 +183,26 @@ impl CallbackTrait for RendererCallback {
                 });
 
                 let pipeline = resources.create_render_pipeline(blend_state, cull_mode);
-                let texture_bind_group = resources
-                    .create_texture_bind_group(path, mesh.premultiplied_alpha, sampler_desc)
-                    // FIXME(Unavailable): Any error here should be ignored and
-                    // logged to the user.
-                    .unwrap();
 
-                *spine_texture = WgpuTexture::Loaded {
-                    pipeline,
-                    vertex_buffer,
-                    index_buffer,
-                    texture_bind_group,
+                match resources.create_texture_bind_group(
+                    path,
+                    mesh.premultiplied_alpha,
+                    sampler_desc,
+                ) {
+                    Ok(texture_bind_group) => {
+                        *spine_texture = WgpuTexture::Loaded {
+                            pipeline,
+                            vertex_buffer,
+                            index_buffer,
+                            texture_bind_group,
+                        };
+                    }
+                    Err(error) => {
+                        if let Some(callback) = &context_options.on_texture_load_error {
+                            callback(error);
+                        };
+                        continue;
+                    }
                 };
             };
 
@@ -366,8 +390,10 @@ fn set_spine_callbacks() {
                 AtlasFilter::Nearest => FilterMode::Nearest,
                 AtlasFilter::Linear => FilterMode::Linear,
                 // TODO(Unavailable): mips
-                // TODO(Unavailable): log
-                _filter => FilterMode::Linear,
+                filter => {
+                    log::warn!("Unsupported texture filter mode: {filter:?}");
+                    FilterMode::Linear
+                }
             }
         }
         fn convert_wrap(wrap: AtlasWrap) -> AddressMode {
@@ -375,8 +401,10 @@ fn set_spine_callbacks() {
                 AtlasWrap::MirroredRepeat => AddressMode::MirrorRepeat,
                 AtlasWrap::ClampToEdge => AddressMode::ClampToEdge,
                 AtlasWrap::Repeat => AddressMode::Repeat,
-                // TODO(Unavailable): log
-                _wrap => AddressMode::ClampToEdge,
+                wrap => {
+                    log::warn!("Unsupported texture wrap mode: {wrap:?}");
+                    AddressMode::ClampToEdge
+                }
             }
         }
         page.renderer_object().set(WgpuTexture::Loading {
