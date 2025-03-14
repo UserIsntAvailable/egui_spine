@@ -229,6 +229,7 @@ pub struct Animation {
     // playback_speed: f32,
     // loop: bool,
     // skin: Option<Skin>,
+    // crossfades: Option<Crossfades>
     // ```
 }
 
